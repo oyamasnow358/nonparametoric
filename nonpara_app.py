@@ -8,17 +8,15 @@ import os
 import matplotlib as mpl
 import matplotlib.font_manager as fm
 
-# フォント設定
-font_path = os.path.abspath("C:\\Users\\taka\\OneDrive\\デスクトップ\\アプリ開発\\機能的行動評価\\kinou_koudou\\ipag.ttf")
-if os.path.exists(font_path):
-    font_prop = fm.FontProperties(fname=font_path)
-    mpl.rcParams["font.family"] = font_prop.get_name()
-    plt.rc("font", family=font_prop.get_name())
-    st.write(f"✅ フォント設定: {mpl.rcParams['font.family']}")
-else:
-    st.error("❌ フォントファイルが見つかりません。")
+# サーバー環境用のフォント設定
+server_font_path = "/tmp/ipaexg.ttf"
+local_font_path = "ipaexg.ttf"  # フォントファイルをアプリフォルダに同梱
+if not os.path.exists(server_font_path):
+    shutil.copy(local_font_path, server_font_path)
+font_prop = fm.FontProperties(fname=server_font_path)
 
 st.title("ノンパラメトリック統計 Web アプリ")
+
 
 # CSVテンプレートのダウンロード
 templates = {
@@ -86,11 +84,12 @@ if uploaded_file is not None:
         else:
             st.info("❌ 3群以上の間で統計的な有意差は見られません。")
         
-        # データの分布を可視化
+        # データの分布を可視化（マン・ホイットニーU検定）
         fig, ax = plt.subplots()
-        sns.boxplot(x=group_col, y=value_col, data=df, ax=ax)
-        ax.set_title("データの分布")
+        sns.histplot(df, x=value_col, hue=group_col, kde=True, ax=ax)
+        ax.set_title("データの分布", fontproperties=font_prop)  # ← フォント適用
         st.pyplot(fig)
+
     
     elif test_type == "同じ生徒の前後比較（ウィルコクソン符号付順位検定）":
         before_col = st.sidebar.selectbox("前の値の列を選択", columns)
