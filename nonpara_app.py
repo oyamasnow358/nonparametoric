@@ -63,6 +63,12 @@ if uploaded_file is not None:
                 st.success("✅ 2群間には統計的に有意な差があります。")
             else:
                 st.info("❌ 2群間に統計的な有意差は見られません。")
+            
+            # データの分布を可視化
+            fig, ax = plt.subplots()
+            sns.histplot(df, x=value_col, hue=group_col, kde=True, ax=ax)
+            ax.set_title("データの分布")
+            st.pyplot(fig)
     
     elif test_type == "3群以上の比較（クラスカル・ウォリス検定）":
         group_col = st.sidebar.selectbox("グループ列を選択", columns)
@@ -79,6 +85,12 @@ if uploaded_file is not None:
             st.success("✅ 3群以上の間で統計的に有意な差があります。")
         else:
             st.info("❌ 3群以上の間で統計的な有意差は見られません。")
+        
+        # データの分布を可視化
+        fig, ax = plt.subplots()
+        sns.boxplot(x=group_col, y=value_col, data=df, ax=ax)
+        ax.set_title("データの分布")
+        st.pyplot(fig)
     
     elif test_type == "同じ生徒の前後比較（ウィルコクソン符号付順位検定）":
         before_col = st.sidebar.selectbox("前の値の列を選択", columns)
