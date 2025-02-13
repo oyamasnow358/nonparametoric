@@ -6,6 +6,7 @@ import seaborn as sns
 import os
 import shutil
 import matplotlib.font_manager as fm
+from io import BytesIO
 
 # サーバー環境用のフォント設定
 server_font_path = "/tmp/ipaexg.ttf"
@@ -52,11 +53,34 @@ def perform_test(test_type, df, group_col, value_col):
     
     return result_text, p
 
-# UI 設定
+# CSVテンプレートのダウンロード機能
+def get_csv_template(test_type):
+    if test_type == "mannwhitneyu":
+        df = pd.DataFrame({"Group": ["A", "A", "B", "B"], "Value": [10, 20, 15, 25]})
+    elif test_type == "kruskal":
+        df = pd.DataFrame({"Group": ["A", "A", "B", "B", "C", "C"], "Value": [10, 20, 15, 25, 30, 35]})
+    elif test_type == "wilcoxon":
+        df = pd.DataFrame({"Time": ["Before", "Before", "After", "After"], "Value": [10, 20, 15, 25]})
+    else:
+        return None
+    
+    csv = df.to_csv(index=False, encoding='utf-8-sig')
+    return BytesIO(csv.encode('utf-8-sig'))
+
 st.sidebar.header("データのアップロード")
 uploaded_file = st.sidebar.file_uploader("CSVファイルをアップロード", type=["csv"])
 test_type_label = st.sidebar.selectbox("適用する検定を選択", list(TEST_OPTIONS.keys()))
 test_type = TEST_OPTIONS[test_type_label]
+
+# CSVテンプレートのダウンロード
+csv_template = get_csv_template(test_type)
+if csv_template:
+    st.sidebar.download_button(
+        label="CSVテンプレートをダウンロード",
+        data=csv_template,
+        file_name="template.csv",
+        mime="text/csv"
+    )
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
