@@ -86,6 +86,14 @@ if uploaded_file is not None:
             if p < 0.05:
              st.success("✅ 2群間には統計的に有意な差があります。「2つのグループの間に違いがある」")
              st.write("p値が0.05未満のため、2つのグループの値に違いがあると考えられます。つまり、AとBの間に統計的に有意な差がある可能性が高いです。")
+             # データの分布を可視化（例：マン・ホイットニーU検定）
+             fig, ax = plt.subplots()
+             sns.histplot(df, x=value_col, hue=group_col, kde=True, ax=ax)
+             ax.set_title("データの分布", fontproperties=font_prop)
+             ax.set_xlabel(value_col, fontproperties=font_prop)
+             ax.set_ylabel("頻度", fontproperties=font_prop)
+             st.pyplot(fig)
+            
             else:
              st.info("❌ 2群間に統計的な有意差は見られません。「2つのグループの値は統計的に異なる」")
              st.write("p値が0.05以上のため、2つのグループの値に明確な違いがあるとは言えません。サンプル数が少ない場合や、データのばらつきが大きい場合はこのような結果になることがあります。")
@@ -133,6 +141,14 @@ if uploaded_file is not None:
         
         if p < 0.05:
             st.success("✅ 3群以上の間で統計的に有意な差があります。")
+            # データの分布を可視化（クラスカル・ウォリス検定）
+            fig, ax = plt.subplots()
+            sns.boxplot(x=group_col, y=value_col, data=df, ax=ax)
+            ax.set_title("データの分布", fontproperties=font_prop)
+            ax.set_xlabel(group_col, fontproperties=font_prop)
+            ax.set_ylabel(value_col, fontproperties=font_prop)
+            st.pyplot(fig)
+
         else:
             st.info("❌ 3群以上の間で統計的な有意差は見られません。")
         
@@ -161,7 +177,7 @@ if uploaded_file is not None:
         if st.button("初心者向け説明を表示/非表示"):
            st.session_state.show_explanation = not st.session_state.show_explanation
             # セッションステートに基づいて説明を表示
-        st.markdown("""
+           st.markdown("""
            ##この検定は、「同じ人が前後でどう変化したか」を調べる方法です。（例えば、「治療前の血圧」と「治療後の血圧」の比較）**
     
            - **p値の意味**
