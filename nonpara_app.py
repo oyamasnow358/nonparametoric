@@ -15,6 +15,10 @@ if not os.path.exists(server_font_path):
     shutil.copy(local_font_path, server_font_path)
 font_prop = fm.FontProperties(fname=server_font_path)
 
+# Matplotlib のデフォルトフォントを変更
+mpl.rcParams['font.family'] = font_prop.get_name()
+
+
 st.title("ノンパラメトリック統計 Web アプリ")
 
 
@@ -62,11 +66,14 @@ if uploaded_file is not None:
             else:
                 st.info("❌ 2群間に統計的な有意差は見られません。")
             
-            # データの分布を可視化（クラスカル・ウォリス検定）
+            # データの分布を可視化（例：マン・ホイットニーU検定）
             fig, ax = plt.subplots()
-            sns.boxplot(x=group_col, y=value_col, data=df, ax=ax)
-            ax.set_title("データの分布", fontproperties=font_prop)  # ← フォント適用
+            sns.histplot(df, x=value_col, hue=group_col, kde=True, ax=ax)
+            ax.set_title("データの分布", fontproperties=font_prop)
+            ax.set_xlabel(value_col, fontproperties=font_prop)
+            ax.set_ylabel("頻度", fontproperties=font_prop)
             st.pyplot(fig)
+
 
     
     elif test_type == "3群以上の比較（クラスカル・ウォリス検定）":
@@ -86,10 +93,13 @@ if uploaded_file is not None:
             st.info("❌ 3群以上の間で統計的な有意差は見られません。")
         
         # データの分布を可視化（クラスカル・ウォリス検定）
-        fig, ax = plt.subplots()
-        sns.boxplot(x=group_col, y=value_col, data=df, ax=ax)
-        ax.set_title("データの分布", fontproperties=font_prop)  # ← フォント適用
-        st.pyplot(fig)
+            fig, ax = plt.subplots()
+            sns.boxplot(x=group_col, y=value_col, data=df, ax=ax)
+            ax.set_title("データの分布", fontproperties=font_prop)
+            ax.set_xlabel(group_col, fontproperties=font_prop)
+            ax.set_ylabel(value_col, fontproperties=font_prop)
+            st.pyplot(fig)
+
 
 
     
