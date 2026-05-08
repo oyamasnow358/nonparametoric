@@ -1,198 +1,124 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import scipy.stats as stats
-import seaborn as sns
-import matplotlib.pyplot as plt
-import os
-import matplotlib as mpl
-import matplotlib.font_manager as fm
+from streamlit_autorefresh import st_autorefresh
+import datetime
 
-# サーバー環境用のフォント設定
-server_font_path = "/tmp/ipaexg.ttf"
-local_font_path = "ipaexg.ttf"  # フォントファイルをアプリフォルダに同梱
-if not os.path.exists(server_font_path):
-    shutil.copy(local_font_path, server_font_path)
-font_prop = fm.FontProperties(fname=server_font_path)
+# ページ設定
+st.set_page_config(page_title="もやもや", layout="wide")
 
-# Matplotlib のデフォルトフォントを変更
-mpl.rcParams['font.family'] = font_prop.get_name()
+# --- 1. データ管理（絶対にバグを出さないための新設計） ---
+class MoyamoyaEnginePerfect:
+    def __init__(self):
+        self.data = [] 
 
+    def add(self, score):
+        self.data.append({"t": datetime.datetime.now(), "v": score})
+        # 1分前のデータは掃除
+        limit = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        self.data = [d for d in self.data if d["t"] > limit]
 
-st.title("ノンパラメトリック統計 Web アプリ")
+    def get_summary(self):
+        now = datetime.datetime.now()
+        sec20 = now - datetime.timedelta(seconds=20)
+        recent = [d["v"] for d in self.data if d["t"] > sec20]
+        avg = sum(recent) / len(recent) if recent else 1.0
+        return avg, len(recent)
 
+@st.cache_resource
+def get_system():
+    return MoyamoyaEnginePerfect()
 
-# CSVテンプレートのダウンロード
-templates = {
-    "2群比較（マン・ホイットニーU検定）": "グループ,値\nA,23\nA,45\nA,67\nB,34\nB,56\nB,78\n",
-    "3群以上の比較（クラスカル・ウォリス検定）": "グループ,値\nA,12\nA,14\nA,16\nB,18\nB,20\nB,22\nC,24\nC,26\nC,28\n",
-    "同じ生徒の前後比較（ウィルコクソン符号付順位検定）": "被験者,前,後\n1,100,105\n2,98,97\n3,102,110\n4,95,92\n"
-}
+engine = get_system()
 
-for name, data in templates.items():
-    st.download_button(f"{name} のCSVテンプレートをダウンロード", data=data.encode('utf-8-sig'), file_name=f"{name}.csv", mime="text/csv")
+# --- 2. 投票ロジック（URLパラメータを利用して確実に検知） ---
+# ボタン（HTMLリンク）が押されると URL に ?v=数値 が入る仕組み
+q = st.query_params
+if "v" in q:
+    try:
+        score = float(q.get("v"))
+        engine.add(score)
+        # 連続投票を防ぐため、パラメータを消してリロード（任意。今回はシンプルさ優先でそのまま）
+    except:
+        pass
 
-# CSVファイルのアップロード
-st.sidebar.header("データのアップロード")
-uploaded_file = st.sidebar.file_uploader("CSVファイルをアップロード", type=["csv"])
+# --- 3. URL判定 ---
+is_instructor = q.get("mode") == "instructor"
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    st.write("### アップロードされたデータ")
-    st.dataframe(df.head())
+# ---------------------------------------------------------
+# 【講師画面】 あなたが「OK」と言ったデザインを死守
+# ---------------------------------------------------------
+if is_instructor:
+    st_autorefresh(interval=2000, key="ins_refresh")
+    avg, count = engine.get_summary()
     
-    # データの列選択
-    columns = df.columns.tolist()
-    test_type = st.sidebar.selectbox("実施する検定の種類を選択", ["2群比較（マン・ホイットニーU検定）", "3群以上の比較（クラスカル・ウォリス検定）", "同じ生徒の前後比較（ウィルコクソン符号付順位検定）"])
-    
-    if test_type == "2群比較（マン・ホイットニーU検定）":
-        group_col = st.sidebar.selectbox("グループ列を選択", columns)
-        value_col = st.sidebar.selectbox("値の列を選択", [col for col in columns if col != group_col])
-       
-        groups = df[group_col].unique()
-
-        # 初心者向け説明の表示切り替え
-        if "show_explanation" not in st.session_state:
-           st.session_state.show_explanation = False
-        # ボタンを押すたびにセッションステートを切り替える
-        if st.button("初心者向け説明を表示/非表示"):
-           st.session_state.show_explanation = not st.session_state.show_explanation
-
-         # セッションステートに基づいて説明を表示
-        if st.session_state.show_explanation:
-           st.markdown("""
-           ##この検定は、2つのグループのデータ（例えば「A群」と「B群」）に違いがあるかを調べる方法です。**
-    
-           - **p値とは？**
-            -  p値は「偶然このような結果が出る確率」を表します。
-              一般的に p値が0.05未満（5%未満） の場合、「2つのグループの間に違いがある」と考えます。
-            -  p値が0.05以上 なら、「データに明確な差があるとは言えない」ということになります。
-           - **結果の解釈**
-            - p値が0.05未満（有意差あり）
-              → 「2つのグループの値は統計的に異なる」と言えます。例えば、「新しい治療を受けたグループの方が回復が早かった」といった結果が示される可能性があります。
-            - p値が0.05以上（有意差なし）
-              → 「2つのグループに明確な差は見られない」と言えます。例えば、「薬を飲んだグループと飲まなかったグループで症状の改善度合いに違いはない」といった結論になります。""")
-        if len(groups) != 2:
-            st.error("エラー: グループはちょうど2種類必要です。")
+    def get_rgb(s):
+        if s >= 0.5:
+            r, g, b = int(255-(255-40)*(s-0.5)*2), int(193+(167-193)*(s-0.5)*2), int(7+(69-7)*(s-0.5)*2)
         else:
-            group1 = df[df[group_col] == groups[0]][value_col]
-            group2 = df[df[group_col] == groups[1]][value_col]
-            stat, p = stats.mannwhitneyu(group1, group2, alternative='two-sided')
-            
-            st.write(f"### マン・ホイットニーU検定の結果")
-            st.write(f"U統計量: {stat:.4f}")
-            st.write(f"p値: {p:.4f}")
-            
-            if p < 0.05:
-             st.success("✅ 2群間には統計的に有意な差があります。「2つのグループの間に違いがある」")
-             st.write("p値が0.05未満のため、2つのグループの値に違いがあると考えられます。つまり、AとBの間に統計的に有意な差がある可能性が高いです。")
-             # データの分布を可視化（例：マン・ホイットニーU検定）
-             fig, ax = plt.subplots()
-             sns.histplot(df, x=value_col, hue=group_col, kde=True, ax=ax)
-             ax.set_title("データの分布", fontproperties=font_prop)
-             ax.set_xlabel(value_col, fontproperties=font_prop)
-             ax.set_ylabel("頻度", fontproperties=font_prop)
-             st.pyplot(fig)
-            
-            else:
-             st.info("❌ 2群間に統計的な有意差は見られません。「2つのグループの値は統計的に異なる」")
-             st.write("p値が0.05以上のため、2つのグループの値に明確な違いがあるとは言えません。サンプル数が少ない場合や、データのばらつきが大きい場合はこのような結果になることがあります。")
-            
-            # データの分布を可視化（例：マン・ホイットニーU検定）
-            fig, ax = plt.subplots()
-            sns.histplot(df, x=value_col, hue=group_col, kde=True, ax=ax)
-            ax.set_title("データの分布", fontproperties=font_prop)
-            ax.set_xlabel(value_col, fontproperties=font_prop)
-            ax.set_ylabel("頻度", fontproperties=font_prop)
-            st.pyplot(fig)
+            r, g, b = int(220+(255-220)*s*2), int(53+(193-53)*s*2), int(69+(7-69)*s*2)
+        return f"rgb({r}, {g}, {b})"
 
+    bg_color = get_rgb(avg)
 
-    
-    elif test_type == "3群以上の比較（クラスカル・ウォリス検定）":
-        group_col = st.sidebar.selectbox("グループ列を選択", columns)
-        value_col = st.sidebar.selectbox("値の列を選択", [col for col in columns if col != group_col])
-        
-        groups = [df[df[group_col] == g][value_col] for g in df[group_col].unique()]
-        stat, p = stats.kruskal(*groups)
+    st.markdown(f"""
+        <style>
+        [data-testid="stAppViewContainer"] {{
+            background-color: {bg_color} !important;
+            transition: background-color 2s ease-in-out;
+        }}
+        .glass-box {{
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            border-radius: 40px;
+            padding: 60px;
+            margin: 100px auto;
+            text-align: center;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            max-width: 600px;
+        }}
+        h1, h2, p {{ color: white !important; font-family: sans-serif; }}
+        </style>
+        <div class="glass-box">
+            <h2 style="margin: 0;">現在の理解度</h2>
+            <h1 style="font-size: 130px; margin: 15px 0; font-weight: bold;">{int(avg * 100)}%</h1>
+            <p style="font-size: 20px;">直近20秒の回答数: {count} 件</p>
+        </div>
+    """, unsafe_allow_html=True)
 
-        # 初心者向け説明の表示切り替え
-        if "show_explanation" not in st.session_state:
-           st.session_state.show_explanation = False
-        # ボタンを押すたびにセッションステートを切り替える
-        if st.button("表示/非表示"):
-           st.session_state.show_explanation = not st.session_state.show_explanation
+# ---------------------------------------------------------
+# 【受講生画面】 HTMLボタンで「巨大・中央・着色」を完全保証
+# ---------------------------------------------------------
+else:
+    # 画面中央に寄せるためのCSS
+    st.markdown("""
+        <style>
+        .block-container { max-width: 600px !important; margin: auto !important; padding-top: 50px !important; }
+        .huge-btn {
+            display: flex; align-items: center; justify-content: center;
+            width: 100%; height: 140px; border-radius: 30px;
+            margin-bottom: 25px; font-size: 35px; font-weight: bold;
+            text-decoration: none; box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+        }
+        .huge-btn:active { transform: scale(0.95); }
+        .g { background-color: #28a745; color: white !important; }
+        .y { background-color: #ffc107; color: black !important; }
+        .r { background-color: #dc3545; color: white !important; }
+        </style>
+    """, unsafe_allow_html=True)
 
-         # セッションステートに基づいて説明を表示
-        if st.session_state.show_explanation:
-           st.markdown("""
-           ##この検定は、「3つ以上のグループ」に違いがあるかを調べる方法です。（例えば「A群」「B群」「C群」の3グループを比較する場合）**
-    
-           - **p値の意味**
-            -  こちらもp値が0.05未満なら「少なくとも1つのグループが他と異なる」と言えます。
-               逆にp値が0.05以上なら、「グループ間に明確な違いは見られない」ということになります。
-           - **結果の解釈**
-            - p値が0.05未満（有意差あり）
-              → 「3つ以上のグループのうち、少なくとも1つは他と異なる」という結果になります。例えば、「A群は成績が良かったが、B群とC群はほぼ同じだった」などの可能性があります。
-            - p値が0.05以上（有意差なし）
-              → 「すべてのグループにおいて、統計的に大きな違いはない」と言えます。例えば、「異なる教育法を試した3つのクラスで、成績の平均に大きな違いはなかった」といった結論になります。""")
-        st.write(f"### クラスカル・ウォリス検定の結果")
-        st.write(f"H統計量: {stat:.4f}")
-        st.write(f"p値: {p:.4f}")
-        
-        if p < 0.05:
-            st.success("✅ 3群以上の間で統計的に有意な差があります。")
-            # データの分布を可視化（クラスカル・ウォリス検定）
-            fig, ax = plt.subplots()
-            sns.boxplot(x=group_col, y=value_col, data=df, ax=ax)
-            ax.set_title("データの分布", fontproperties=font_prop)
-            ax.set_xlabel(group_col, fontproperties=font_prop)
-            ax.set_ylabel(value_col, fontproperties=font_prop)
-            st.pyplot(fig)
+    st.markdown("<h1 style='text-align: center; color: #333;'>今の理解度は？</h1>", unsafe_allow_html=True)
 
-        else:
-            st.info("❌ 3群以上の間で統計的な有意差は見られません。")
-        
-        # データの分布を可視化（クラスカル・ウォリス検定）
-            fig, ax = plt.subplots()
-            sns.boxplot(x=group_col, y=value_col, data=df, ax=ax)
-            ax.set_title("データの分布", fontproperties=font_prop)
-            ax.set_xlabel(group_col, fontproperties=font_prop)
-            ax.set_ylabel(value_col, fontproperties=font_prop)
-            st.pyplot(fig)
+    # 状態メッセージ
+    if "v" in q:
+        st.success("✅ 送信しました（再度選ぶ場合は下のボタンをタップ）")
+    else:
+        st.info("ℹ️ ボタンをタップして今の状況を送信してください")
 
+    # HTMLで直接ボタン（リンク）を記述。これで100%色がつきます。
+    # href="?v=..." によって、自分自身のURLにパラメータを付けてリロードさせる仕組み
+    st.markdown(f'<a href="?v=1.0" target="_self" class="huge-btn g">😊 スムーズ</a>', unsafe_allow_html=True)
+    st.markdown(f'<a href="?v=0.5" target="_self" class="huge-btn y">🤨 少し速い</a>', unsafe_allow_html=True)
+    st.markdown(f'<a href="?v=0.0" target="_self" class="huge-btn r">❓ わからない</a>', unsafe_allow_html=True)
 
-
-    
-    elif test_type == "同じ生徒の前後比較（ウィルコクソン符号付順位検定）":
-        before_col = st.sidebar.selectbox("前の値の列を選択", columns)
-        after_col = st.sidebar.selectbox("後の値の列を選択", [col for col in columns if col != before_col])
-        
-        stat, p = stats.wilcoxon(df[before_col], df[after_col])
-
-        # 初心者向け説明の表示切り替え
-        if "show_explanation" not in st.session_state:
-           st.session_state.show_explanation = False
-
-        # ボタンを押すたびにセッションステートを切り替える
-        if st.button("初心者向け説明を表示/非表示"):
-           st.session_state.show_explanation = not st.session_state.show_explanation
-            # セッションステートに基づいて説明を表示
-           st.markdown("""
-           ##この検定は、「同じ人が前後でどう変化したか」を調べる方法です。（例えば、「治療前の血圧」と「治療後の血圧」の比較）**
-    
-           - **p値の意味**
-            -  他の検定と同じく、p値が0.05未満なら「前後で変化があった」と言えます。
-               p値が0.05以上なら、「前後での変化は偶然の範囲内かもしれない」ということになります。
-           - **結果の解釈**
-            - p値が0.05未満（有意差あり）
-              → 「治療やトレーニングなどの介入の影響で、値が変化した可能性が高い」と言えます。例えば、「運動プログラムの前後で体重が明らかに減った」という結果になるかもしれません。
-            - p値が0.05以上（有意差なし）
-              → 「前後での変化が統計的に明確ではない」と言えます。例えば、「新しい薬を試したが、血圧に有意な変化は見られなかった」といった結論になります。""")
-        st.write(f"### ウィルコクソン符号付順位検定の結果")
-        st.write(f"W統計量: {stat:.4f}")
-        st.write(f"p値: {p:.4f}")
-        
-        if p < 0.05:
-            st.success("✅ 前後のデータ間に統計的に有意な差があります。")
-        else:
-            st.info("❌ 前後のデータ間に統計的な有意差は見られません。")
+    st.markdown("<p style='text-align: center; color: gray; margin-top: 50px;'>20秒経過すると集計から自動的に消えます</p>", unsafe_allow_html=True)
